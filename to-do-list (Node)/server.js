@@ -1,4 +1,7 @@
 const http = require("http");
+const { v4: uuidv4 } = require("uuid");
+const errorHandle = require("./errorHandle");
+const todos = [];
 
 const requestListener = (req, res) => {
   // 不同的 domain 會先發一個 preflight 預檢請求 (OPTIONS API 檢查機制)
@@ -9,19 +12,103 @@ const requestListener = (req, res) => {
     "Access-Control-Allow-Methods": "PATCH, POST, GET,OPTIONS,DELETE",
     "Content-Type": "application/json",
   };
+
+  let body = "";
+  req.on("data", (chunk) => {
+    body += chunk;
+  });
+
   console.log("url", req.url);
   console.log("methods", req.method);
-  if (req.url == "/" && req.method == "GET") {
-    res.writeHeader(200, headers);
+  if (req.url == "/todos" && req.method == "GET") {
+    res.writeHead(200, headers);
     res.write(
       JSON.stringify({
         status: "success",
-        data: [],
+        data: todos,
       })
     );
     res.end();
+  } else if (req.url == "/todos" && req.method == "POST") {
+    req.on("end", () => {
+      try {
+        const title = JSON.parse(body).title;
+        if (title !== undefined) {
+          const todo = {
+            title: title,
+            id: uuidv4(),
+          };
+          todos.push(todo);
+          res.writeHead(200, headers);
+          res.write(
+            JSON.stringify({
+              status: "success",
+              data: todo,
+            })
+          );
+          res.end();
+        } else {
+          errorHandle(res);
+        }
+      } catch (error) {
+        errorHandle(res);
+      }
+    });
+  } else if (req.url == "/todos" && req.method == "DELETE") {
+    todos.length = 0;
+    res.writeHead(200, headers);
+    res.write(
+      JSON.stringify({
+        status: "success",
+        data: todos,
+      })
+    );
+    res.end();
+  } else if (req.url.startsWith("/todos/") && req.method == "DELETE") {
+    const id = req.url.split("/").pop();
+    const index = todos.findIndex((element) => element.id == id);
+    if (index !== -1) {
+      todos.splice(index, 1);
+      res.writeHead(200, headers);
+      res.write(
+        JSON.stringify({
+          status: "success",
+          data: todos,
+        })
+      );
+      res.end();
+    } else {
+      errorHandle(res);
+    }
+  } else if (req.url.startsWith("/todos/") && req.method == "PATCH") {
+    req.on("end", () => {
+      try {
+        const todo = JSON.parse(body).title;
+        const id = req.url.split("/").pop();
+        const index = todos.findIndex((element) => element.id == id);
+        if (todo !== undefined && index !== -1) {
+          todos[index].title = todo;
+          res.writeHead(200, headers);
+          res.write(
+            JSON.stringify({
+              status: "success",
+              data: todos,
+            })
+          );
+          res.end();
+        } else {
+          errorHandle(res);
+        }
+      } catch (error) {
+        errorHandle(res);
+      }
+    });
+  } else if (req.method == "OPTIONS") {
+    // preflight
+    res.writeHead(200, headers);
+    res.end();
   } else {
-    res.writeHeader(404, headers);
+    res.writeHead(404, headers);
     res.write(
       JSON.stringify({
         status: "false",
